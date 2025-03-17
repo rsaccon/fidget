@@ -164,7 +164,14 @@ impl Engine {
         scope.push("x", Tree::x());
         scope.push("y", Tree::y());
         scope.push("z", Tree::z());
-        self.engine.run_with_scope(&mut scope, script)?;
+        //self.engine.run_with_scope(&mut scope, script)?;  // ORIG
+
+        // BEGIN ast experiments
+        let ast = self.engine.compile_with_scope(&mut scope, script)?;
+        //println!("{:#?}", ast);
+        println!("Statements:\n{:#?}", ast.statements());
+        self.engine.run_ast_with_scope(&mut scope, &ast)?;
+        // END ast experiments
 
         // Steal the ScriptContext's contents
         let mut lock = self.context.lock().unwrap();

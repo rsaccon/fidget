@@ -6,6 +6,8 @@ use env_logger::Env;
 use log::{debug, error, info, warn};
 use nalgebra::{Point2, Point3};
 use notify::Watcher;
+use std::fs::File;
+use std::io::prelude::*;
 
 use fidget::render::{
     ImageRenderConfig, RotateHandle, TranslateHandle, View2, View3,
@@ -517,6 +519,37 @@ impl ViewerApp {
                         changed = self.mode.set_2d_mode(m);
                     }
                 });
+                if ui.button("Move WIP").clicked() {
+                    let mut file = File::create("models/simple.rhai").unwrap();
+                    // TODO: acees AST of selected shape, highlight it, inject move
+                    file.write_all(
+                        b"let scale = 3;
+
+let x = x * scale;
+let y = y * scale;
+let z = z * scale;
+
+let sphere = sqrt(square(x) + square(y) + square(z)) - 1;
+let sphere = move(sphere, 0.5, 0.0);
+draw(sphere);",
+                    )
+                    .unwrap();
+                }
+                if ui.button("Select WIP").clicked() {
+                    let mut file = File::create("models/simple.rhai").unwrap();
+                    // TODO: acees AST of selected shape, highlight it, inject move
+                    file.write_all(
+                        b"let scale = 3;
+
+let x = x * scale;
+let y = y * scale;
+let z = z * scale;
+
+let sphere = sqrt(square(x) + square(y) + square(z)) - 1;
+draw_rgb(sphere, 0.5, 0.5, 0.5);",
+                    )
+                    .unwrap();
+                }
             });
         });
         changed
@@ -657,6 +690,12 @@ impl eframe::App for ViewerApp {
             .frame(egui::Frame::new().fill(egui::Color32::BLACK))
             .show(ctx, |ui| self.paint_image(ui))
             .inner;
+
+        if r.clicked() {
+            if let Some(pos) = r.interact_pointer_pos() {
+                info!("clicked at {} {}", pos.x, pos.y);
+            }
+        }
 
         // Handle pan and zoom
         match &mut self.mode {

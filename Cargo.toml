@@ -45,11 +45,14 @@ num-traits = "0.2"
 ordered-float = "5"
 rand = "0.9"
 rayon = "1.10"
-rhai = { version = "1.17", features = ["sync"] }
+rhai = { version = "1.17", features = ["sync", "internals"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
 static_assertions = "1"
 strum = { version = "0.27", features = ["derive"] }
 thiserror = "2"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
-windows = { version = "0.60", features = ["Win32_Foundation", "Win32_System_Memory"] }
+windows = { version = "0.60", features = [
+    "Win32_Foundation",
+    "Win32_System_Memory",
+] }
