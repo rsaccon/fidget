@@ -79,6 +79,7 @@ struct RenderResult {
     dt: std::time::Duration,
     image: egui::ImageData,
     image_size: fidget::render::ImageSize,
+    shape_map: Vec<Option<usize>>,
 }
 
 fn render_thread<F>(
@@ -135,8 +136,9 @@ where
                 ],
                 egui::Color32::BLACK,
             );
+            let mut shape_map: Vec<Option<usize>> = Vec::new();
             let render_start = std::time::Instant::now();
-            for s in out.shapes.iter() {
+            for (shape_nr, s) in out.shapes.iter().enumerate() {
                 let tape = fidget::shape::Shape::<F>::from(s.tree.clone());
                 render(
                     &render_config.mode,
@@ -144,6 +146,8 @@ where
                     render_config.image_size,
                     s.color_rgb,
                     &mut image.pixels,
+                    shape_nr,
+                    &mut shape_map,
                 );
             }
             let dt = render_start.elapsed();
@@ -152,6 +156,7 @@ where
                 image,
                 dt,
                 image_size: render_config.image_size,
+                shape_map,
             }))?;
             changed = false;
             wake.send(()).unwrap();
@@ -165,7 +170,10 @@ fn render<F: fidget::eval::Function + fidget::render::RenderHints>(
     image_size: fidget::render::ImageSize,
     color: [u8; 3],
     pixels: &mut [egui::Color32],
+    shape_nr: usize,
+    shape_map: &mut Vec<Option<usize>>,
 ) {
+    info!("shape nr: {}", shape_nr);
     match mode {
         RenderMode::TwoD { view, mode, .. } => {
             let config = ImageRenderConfig {
@@ -189,6 +197,9 @@ fn render<F: fidget::eval::Function + fidget::render::RenderHints>(
                     for (p, &i) in pixels.iter_mut().zip(&image) {
                         if i {
                             *p = c;
+                            shape_map.push(Some(shape_nr))
+                        } else {
+                            shape_map.push(None)
                         }
                     }
                 }
@@ -199,6 +210,11 @@ fn render<F: fidget::eval::Function + fidget::render::RenderHints>(
                         .unwrap();
                     for (p, i) in pixels.iter_mut().zip(&image) {
                         *p = egui::Color32::from_rgb(i[0], i[1], i[2]);
+                        if i[0] > 0 && i[1] > 0 && i[2] > 0 {
+                            shape_map.push(Some(shape_nr))
+                        } else {
+                            shape_map.push(None)
+                        }
                     }
                 }
 
@@ -208,6 +224,11 @@ fn render<F: fidget::eval::Function + fidget::render::RenderHints>(
                         .unwrap();
                     for (p, i) in pixels.iter_mut().zip(&image) {
                         *p = egui::Color32::from_rgb(i[0], i[1], i[2]);
+                        if i[0] > 0 && i[1] > 0 && i[2] > 0 {
+                            shape_map.push(Some(shape_nr))
+                        } else {
+                            shape_map.push(None)
+                        }
                     }
                 }
 
@@ -218,6 +239,11 @@ fn render<F: fidget::eval::Function + fidget::render::RenderHints>(
                     for (p, i) in pixels.iter_mut().zip(&image) {
                         let c = i.as_debug_color();
                         *p = egui::Color32::from_rgb(c[0], c[1], c[2]);
+                        if i.is_filled() {
+                            shape_map.push(Some(shape_nr))
+                        } else {
+                            shape_map.push(None)
+                        }
                     }
                 }
             }
@@ -243,6 +269,9 @@ fn render<F: fidget::eval::Function + fidget::render::RenderHints>(
                     {
                         if d != 0 {
                             *p = egui::Color32::from_rgb(c[0], c[1], c[2]);
+                            shape_map.push(Some(shape_nr))
+                        } else {
+                            shape_map.push(None)
                         }
                     }
                 }
@@ -254,6 +283,9 @@ fn render<F: fidget::eval::Function + fidget::render::RenderHints>(
                         if d != 0 {
                             let b = (d * 255 / max_depth) as u8;
                             *p = egui::Color32::from_rgb(b, b, b);
+                            shape_map.push(Some(shape_nr))
+                        } else {
+                            shape_map.push(None)
                         }
                     }
                 }
@@ -440,6 +472,8 @@ struct ViewerApp {
 
     config_tx: Sender<RenderSettings>,
     image_rx: Receiver<Result<RenderResult, String>>,
+
+    shape_map: Vec<Option<usize>>,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -464,6 +498,8 @@ impl ViewerApp {
                 drag_start: None,
                 mode: Mode2D::Color,
             },
+
+            shape_map: Vec::new(),
         }
     }
 
@@ -550,6 +586,23 @@ draw_rgb(sphere, 0.5, 0.5, 0.5);",
                     )
                     .unwrap();
                 }
+                if ui.button("Reset").clicked() {
+                    let mut file = File::create("models/simple.rhai").unwrap();
+                    // TODO: acees AST of selected shape, highlight it, inject move
+                    file.write_all(
+                        b"let scale = 3;
+
+let x = x * scale;
+let y = y * scale;
+let z = z * scale;
+
+let sphere = sqrt(square(x) + square(y) + square(z)) - 1;
+draw_rgb(sphere, 0.5, 0.5, 0.5);
+let sphere = move(sphere, -1.0, 0.0);
+draw_rgb(sphere, 0.5, 0.5, 0.5);",
+                    )
+                    .unwrap();
+                }
             });
         });
         changed
@@ -584,10 +637,14 @@ draw_rgb(sphere, 0.5, 0.5, 0.5);",
                     }
                     self.stats = Some((r.dt, r.image_size));
                     self.err = None;
+
+                    self.shape_map = r.shape_map
                 }
                 Err(e) => {
                     self.err = Some(e);
                     self.stats = None;
+
+                    self.shape_map = Vec::new()
                 }
             }
         }
@@ -691,12 +748,6 @@ impl eframe::App for ViewerApp {
             .show(ctx, |ui| self.paint_image(ui))
             .inner;
 
-        if r.clicked() {
-            if let Some(pos) = r.interact_pointer_pos() {
-                info!("clicked at {} {}", pos.x, pos.y);
-            }
-        }
-
         // Handle pan and zoom
         match &mut self.mode {
             RenderMode::TwoD {
@@ -727,6 +778,18 @@ impl eframe::App for ViewerApp {
                     });
                     render_changed |=
                         view.zoom((scroll / 100.0).exp2(), mouse_pos);
+                }
+
+                if r.clicked() {
+                    if let Some(pos) = r.interact_pointer_pos() {
+                        let index = pos.y as usize
+                            * self.image_size.width() as usize
+                            + pos.x as usize;
+                        info!(
+                            "clicked 2d at {} {} => shape_nr: {:#?}",
+                            pos.x, pos.y, self.shape_map[index]
+                        );
+                    }
                 }
             }
             RenderMode::ThreeD {
@@ -777,6 +840,17 @@ impl eframe::App for ViewerApp {
                     if scroll != 0.0 {
                         view.zoom((scroll / 100.0).exp2(), mouse_pos);
                         render_changed = true;
+                    }
+                }
+                if r.clicked() {
+                    if let Some(pos) = r.interact_pointer_pos() {
+                        let index = pos.y as usize
+                            * self.image_size.width() as usize
+                            + pos.x as usize;
+                        info!(
+                            "clicked 2d at {} {} => shape_nr: {:#?}",
+                            pos.x, pos.y, self.shape_map[index]
+                        );
                     }
                 }
             }

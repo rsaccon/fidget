@@ -169,7 +169,7 @@ impl Engine {
         // BEGIN ast experiments
         let ast = self.engine.compile_with_scope(&mut scope, script)?;
         //println!("{:#?}", ast);
-        println!("Statements:\n{:#?}", ast.statements());
+        //println!("Statements:\n{:#?}", ast.statements());
         self.engine.run_ast_with_scope(&mut scope, &ast)?;
         // END ast experiments
 
