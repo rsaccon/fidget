@@ -16,6 +16,9 @@ use fidget::render::{
 
 use std::{error::Error, path::Path};
 
+/// Single-channel shape image
+pub type ShapeImage = fidget::render::Image<Option<u16>>;
+
 /// Minimal viewer, using Fidget to render a Rhai script
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -79,7 +82,7 @@ struct RenderResult {
     dt: std::time::Duration,
     image: egui::ImageData,
     image_size: fidget::render::ImageSize,
-    shape_map: Vec<Option<usize>>,
+    shape_image: ShapeImage,
 }
 
 fn render_thread<F>(
@@ -136,9 +139,12 @@ where
                 ],
                 egui::Color32::BLACK,
             );
-            let mut shape_map: Vec<Option<usize>> = Vec::new();
+            let mut shape_image = ShapeImage::new(
+                render_config.image_size.width() as usize,
+                render_config.image_size.height() as usize,
+            );
             let render_start = std::time::Instant::now();
-            for (shape_nr, s) in out.shapes.iter().enumerate() {
+            for (shape_index, s) in out.shapes.iter().enumerate() {
                 let tape = fidget::shape::Shape::<F>::from(s.tree.clone());
                 render(
                     &render_config.mode,
@@ -146,8 +152,8 @@ where
                     render_config.image_size,
                     s.color_rgb,
                     &mut image.pixels,
-                    shape_nr,
-                    &mut shape_map,
+                    shape_index,
+                    &mut shape_image,
                 );
             }
             let dt = render_start.elapsed();
@@ -156,7 +162,7 @@ where
                 image,
                 dt,
                 image_size: render_config.image_size,
-                shape_map,
+                shape_image,
             }))?;
             changed = false;
             wake.send(()).unwrap();
@@ -170,10 +176,10 @@ fn render<F: fidget::eval::Function + fidget::render::RenderHints>(
     image_size: fidget::render::ImageSize,
     color: [u8; 3],
     pixels: &mut [egui::Color32],
-    shape_nr: usize,
-    shape_map: &mut Vec<Option<usize>>,
+    shape_index: usize,
+    shape_image: &mut ShapeImage,
 ) {
-    info!("shape nr: {}", shape_nr);
+    info!("rendering with shape_index: {}", shape_index);
     match mode {
         RenderMode::TwoD { view, mode, .. } => {
             let config = ImageRenderConfig {
@@ -194,12 +200,14 @@ fn render<F: fidget::eval::Function + fidget::render::RenderHints>(
                         color[2],
                         u8::MAX,
                     );
-                    for (p, &i) in pixels.iter_mut().zip(&image) {
+                    for (count, (p, &i)) in
+                        pixels.iter_mut().zip(&image).enumerate()
+                    {
                         if i {
                             *p = c;
-                            shape_map.push(Some(shape_nr))
+                            shape_image[count] = Some(shape_index as u16);
                         } else {
-                            shape_map.push(None)
+                            shape_image[count] = None;
                         }
                     }
                 }
@@ -208,12 +216,14 @@ fn render<F: fidget::eval::Function + fidget::render::RenderHints>(
                     let image = config
                         .run::<_, fidget::render::SdfRenderMode>(shape)
                         .unwrap();
-                    for (p, i) in pixels.iter_mut().zip(&image) {
+                    for (count, (p, i)) in
+                        pixels.iter_mut().zip(&image).enumerate()
+                    {
                         *p = egui::Color32::from_rgb(i[0], i[1], i[2]);
                         if i[0] > 0 && i[1] > 0 && i[2] > 0 {
-                            shape_map.push(Some(shape_nr))
+                            shape_image[count] = Some(shape_index as u16);
                         } else {
-                            shape_map.push(None)
+                            shape_image[count] = None;
                         }
                     }
                 }
@@ -222,12 +232,14 @@ fn render<F: fidget::eval::Function + fidget::render::RenderHints>(
                     let image = config
                         .run::<_, fidget::render::SdfPixelRenderMode>(shape)
                         .unwrap();
-                    for (p, i) in pixels.iter_mut().zip(&image) {
+                    for (count, (p, i)) in
+                        pixels.iter_mut().zip(&image).enumerate()
+                    {
                         *p = egui::Color32::from_rgb(i[0], i[1], i[2]);
                         if i[0] > 0 && i[1] > 0 && i[2] > 0 {
-                            shape_map.push(Some(shape_nr))
+                            shape_image[count] = Some(shape_index as u16);
                         } else {
-                            shape_map.push(None)
+                            shape_image[count] = None;
                         }
                     }
                 }
@@ -236,13 +248,16 @@ fn render<F: fidget::eval::Function + fidget::render::RenderHints>(
                     let image = config
                         .run::<_, fidget::render::DebugRenderMode>(shape)
                         .unwrap();
-                    for (p, i) in pixels.iter_mut().zip(&image) {
+                    for (count, (p, i)) in
+                        pixels.iter_mut().zip(&image).enumerate()
+                    {
                         let c = i.as_debug_color();
                         *p = egui::Color32::from_rgb(c[0], c[1], c[2]);
                         if i.is_filled() {
-                            shape_map.push(Some(shape_nr))
+                            // shape_map.push(Some(shape_nr))
+                            shape_image[count] = Some(shape_index as u16);
                         } else {
-                            shape_map.push(None)
+                            shape_image[count] = None;
                         }
                     }
                 }
@@ -269,9 +284,10 @@ fn render<F: fidget::eval::Function + fidget::render::RenderHints>(
                     {
                         if d != 0 {
                             *p = egui::Color32::from_rgb(c[0], c[1], c[2]);
-                            shape_map.push(Some(shape_nr))
-                        } else {
-                            shape_map.push(None)
+                            // shape_image[count] = Some(shape_index as u16);
+                            // } else {
+                            //     shape_map.push(None)
+                            //     shape_image[count] = None;
                         }
                     }
                 }
@@ -279,13 +295,15 @@ fn render<F: fidget::eval::Function + fidget::render::RenderHints>(
                 Mode3D::Heightmap => {
                     let max_depth =
                         depth.iter().max().cloned().unwrap_or(1).max(1);
-                    for (p, &d) in pixels.iter_mut().zip(&depth) {
+                    for (count, (p, &d)) in
+                        pixels.iter_mut().zip(&depth).enumerate()
+                    {
                         if d != 0 {
                             let b = (d * 255 / max_depth) as u8;
                             *p = egui::Color32::from_rgb(b, b, b);
-                            shape_map.push(Some(shape_nr))
+                            shape_image[count] = Some(shape_index as u16);
                         } else {
-                            shape_map.push(None)
+                            shape_image[count] = None;
                         }
                     }
                 }
@@ -473,7 +491,7 @@ struct ViewerApp {
     config_tx: Sender<RenderSettings>,
     image_rx: Receiver<Result<RenderResult, String>>,
 
-    shape_map: Vec<Option<usize>>,
+    shape_image: Option<ShapeImage>,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -499,7 +517,7 @@ impl ViewerApp {
                 mode: Mode2D::Color,
             },
 
-            shape_map: Vec::new(),
+            shape_image: None,
         }
     }
 
@@ -603,6 +621,29 @@ draw_rgb(sphere, 0.5, 0.5, 0.5);",
                     )
                     .unwrap();
                 }
+
+                if ui.button("Save shape debug image").clicked() {
+                    if let Some(shape_image) = &self.shape_image {
+                        let buffer: Vec<u8> = shape_image
+                            .into_iter()
+                            .flat_map(|a| {
+                                if let Some(_shape) = a {
+                                    [255, 255, 255, 255]
+                                } else {
+                                    [0, 0, 0, 0]
+                                }
+                            })
+                            .collect();
+                        image::save_buffer(
+                            &Path::new("out_shapes.png"),
+                            &buffer,
+                            shape_image.width() as u32,
+                            shape_image.height() as u32,
+                            image::ColorType::Rgba8,
+                        )
+                        .unwrap();
+                    }
+                }
             });
         });
         changed
@@ -637,14 +678,12 @@ draw_rgb(sphere, 0.5, 0.5, 0.5);",
                     }
                     self.stats = Some((r.dt, r.image_size));
                     self.err = None;
-
-                    self.shape_map = r.shape_map
+                    self.shape_image = Some(r.shape_image)
                 }
                 Err(e) => {
                     self.err = Some(e);
                     self.stats = None;
-
-                    self.shape_map = Vec::new()
+                    self.shape_image = None;
                 }
             }
         }
@@ -759,8 +798,32 @@ impl eframe::App for ViewerApp {
                 );
 
                 if let Some(pos) = r.interact_pointer_pos() {
+                    let pos2 = pos - rect.min;
+                    let col = (pos2.y * 2.0) as usize;
+                    let row = (pos2.x * 2.0) as usize;
                     let pos =
                         image_size.transform_point(Point2::new(pos.x, pos.y));
+                    if let Some(shape_image) = &self.shape_image {
+                        let col = shape_image.height() - col; // PROBLEM !!
+                                                              // let col = ((pos.y / 2.0 + 0.5)
+                                                              //     * shape_image.height() as f32)
+                                                              //     as usize;
+                                                              // let row = ((pos.x / 2.0 + 0.5)
+                                                              //     * shape_image.width() as f32)
+                                                              //     as usize;
+                        info!(
+                        "interact: {}|{}x{}|{} len:{} | clicked 2d at {} {} / {} {} => shape_nr: {:#?}",
+                        shape_image.width(),
+                        image_size.width(),
+                        shape_image.height(),
+                        image_size.height(),
+                        shape_image.len(),
+                        pos2.x,
+                        pos2.y,
+                        col, row,
+                        shape_image[(col, row)],
+                    );
+                    }
                     if let Some(prev) = drag_start {
                         render_changed |= view.translate(prev, pos);
                     } else {
@@ -778,19 +841,26 @@ impl eframe::App for ViewerApp {
                     });
                     render_changed |=
                         view.zoom((scroll / 100.0).exp2(), mouse_pos);
+
+                    // TODO: do it here:
                 }
 
-                if r.clicked() {
-                    if let Some(pos) = r.interact_pointer_pos() {
-                        let index = pos.y as usize
-                            * self.image_size.width() as usize
-                            + pos.x as usize;
-                        info!(
-                            "clicked 2d at {} {} => shape_nr: {:#?}",
-                            pos.x, pos.y, self.shape_map[index]
-                        );
-                    }
-                }
+                // DOES NOT WORK: mouse coordinates not transformed yet to render 2d space
+                // if r.clicked() {
+                //     if let Some(pos) = r.interact_pointer_pos() {
+                //         if let Some(shape_image) = &self.shape_image {
+                //             info!(
+                //                 "{}x{} len:{} | clicked 2d at {} {} => shape_nr: {:#?}",
+                //                 shape_image.width(),
+                //                 shape_image.height(),
+                //                 shape_image.len(),
+                //                 pos.x,
+                //                 pos.y,
+                //                 shape_image[(pos.x as usize * 2, pos.y as usize * 2)],
+                //             );
+                //         }
+                //     }
+                // }
             }
             RenderMode::ThreeD {
                 view, drag_start, ..
@@ -844,13 +914,17 @@ impl eframe::App for ViewerApp {
                 }
                 if r.clicked() {
                     if let Some(pos) = r.interact_pointer_pos() {
-                        let index = pos.y as usize
-                            * self.image_size.width() as usize
-                            + pos.x as usize;
-                        info!(
-                            "clicked 2d at {} {} => shape_nr: {:#?}",
-                            pos.x, pos.y, self.shape_map[index]
-                        );
+                        if let Some(shape_image) = &self.shape_image {
+                            info!(
+                                "{}x{} len:{} | clicked 3d at {} {} => shape_nr: {:#?}",
+                                shape_image.width(),
+                                shape_image.height(),
+                                shape_image.len(),
+                                pos.x,
+                                pos.y,
+                                shape_image[(pos.x as usize, pos.y as usize)]
+                            );
+                        }
                     }
                 }
             }

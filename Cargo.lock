@@ -1393,6 +1393,7 @@ dependencies = [
  "eframe",
  "env_logger",
  "fidget",
+ "image",
  "log",
  "nalgebra",
  "notify",
