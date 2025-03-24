@@ -6,6 +6,7 @@ use env_logger::Env;
 use log::{debug, error, info, warn};
 use nalgebra::{Point2, Point3};
 use notify::Watcher;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::prelude::*;
 
@@ -15,6 +16,8 @@ use fidget::render::{
 };
 
 use std::{error::Error, path::Path};
+
+/// Shape image pixel
 
 /// Single-channel shape image
 pub type ShapeImage = fidget::render::Image<Option<u16>>;
@@ -179,7 +182,6 @@ fn render<F: fidget::eval::Function + fidget::render::RenderHints>(
     shape_index: usize,
     shape_image: &mut ShapeImage,
 ) {
-    info!("rendering with shape_index: {}", shape_index);
     match mode {
         RenderMode::TwoD { view, mode, .. } => {
             let config = ImageRenderConfig {
@@ -206,8 +208,6 @@ fn render<F: fidget::eval::Function + fidget::render::RenderHints>(
                         if i {
                             *p = c;
                             shape_image[count] = Some(shape_index as u16);
-                        } else {
-                            shape_image[count] = None;
                         }
                     }
                 }
@@ -222,8 +222,6 @@ fn render<F: fidget::eval::Function + fidget::render::RenderHints>(
                         *p = egui::Color32::from_rgb(i[0], i[1], i[2]);
                         if i[0] > 0 && i[1] > 0 && i[2] > 0 {
                             shape_image[count] = Some(shape_index as u16);
-                        } else {
-                            shape_image[count] = None;
                         }
                     }
                 }
@@ -238,8 +236,6 @@ fn render<F: fidget::eval::Function + fidget::render::RenderHints>(
                         *p = egui::Color32::from_rgb(i[0], i[1], i[2]);
                         if i[0] > 0 && i[1] > 0 && i[2] > 0 {
                             shape_image[count] = Some(shape_index as u16);
-                        } else {
-                            shape_image[count] = None;
                         }
                     }
                 }
@@ -254,10 +250,7 @@ fn render<F: fidget::eval::Function + fidget::render::RenderHints>(
                         let c = i.as_debug_color();
                         *p = egui::Color32::from_rgb(c[0], c[1], c[2]);
                         if i.is_filled() {
-                            // shape_map.push(Some(shape_nr))
                             shape_image[count] = Some(shape_index as u16);
-                        } else {
-                            shape_image[count] = None;
                         }
                     }
                 }
@@ -279,15 +272,14 @@ fn render<F: fidget::eval::Function + fidget::render::RenderHints>(
             match mode {
                 Mode3D::Color => {
                     let color = norm.to_color();
-                    for (p, (&d, &c)) in
-                        pixels.iter_mut().zip(depth.iter().zip(&color))
+                    for (count, (p, (&d, &c))) in pixels
+                        .iter_mut()
+                        .zip(depth.iter().zip(&color))
+                        .enumerate()
                     {
                         if d != 0 {
                             *p = egui::Color32::from_rgb(c[0], c[1], c[2]);
-                            // shape_image[count] = Some(shape_index as u16);
-                            // } else {
-                            //     shape_map.push(None)
-                            //     shape_image[count] = None;
+                            shape_image[count] = Some(count as u16);
                         }
                     }
                 }
@@ -302,8 +294,6 @@ fn render<F: fidget::eval::Function + fidget::render::RenderHints>(
                             let b = (d * 255 / max_depth) as u8;
                             *p = egui::Color32::from_rgb(b, b, b);
                             shape_image[count] = Some(shape_index as u16);
-                        } else {
-                            shape_image[count] = None;
                         }
                     }
                 }
@@ -492,6 +482,7 @@ struct ViewerApp {
     image_rx: Receiver<Result<RenderResult, String>>,
 
     shape_image: Option<ShapeImage>,
+    selected_shapes: HashMap<u16, bool>,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -518,6 +509,7 @@ impl ViewerApp {
             },
 
             shape_image: None,
+            selected_shapes: HashMap::new(),
         }
     }
 
@@ -621,29 +613,6 @@ draw_rgb(sphere, 0.5, 0.5, 0.5);",
                     )
                     .unwrap();
                 }
-
-                if ui.button("Save shape debug image").clicked() {
-                    if let Some(shape_image) = &self.shape_image {
-                        let buffer: Vec<u8> = shape_image
-                            .into_iter()
-                            .flat_map(|a| {
-                                if let Some(_shape) = a {
-                                    [255, 255, 255, 255]
-                                } else {
-                                    [0, 0, 0, 0]
-                                }
-                            })
-                            .collect();
-                        image::save_buffer(
-                            &Path::new("out_shapes.png"),
-                            &buffer,
-                            shape_image.width() as u32,
-                            shape_image.height() as u32,
-                            image::ColorType::Rgba8,
-                        )
-                        .unwrap();
-                    }
-                }
             });
         });
         changed
@@ -713,11 +682,17 @@ draw_rgb(sphere, 0.5, 0.5, 0.5);",
                 painter.add(mesh);
             }
 
+            let mut selected_shapes = String::new();
+            for (key, _) in &self.selected_shapes {
+                selected_shapes = format!("{} {},", selected_shapes, key);
+            }
+
             let layout = painter.layout(
                 format!(
-                    "Image size: {}×{}\nRender time: {dt:.2?}",
+                    "Image size: {}×{}\nRender time: {dt:.2?}\nSelected shapes:{}",
                     image_size.width(),
                     image_size.height(),
+                    selected_shapes
                 ),
                 egui::FontId::proportional(14.0),
                 egui::Color32::WHITE,
@@ -799,30 +774,19 @@ impl eframe::App for ViewerApp {
 
                 if let Some(pos) = r.interact_pointer_pos() {
                     let pos2 = pos - rect.min;
-                    let col = (pos2.y * 2.0) as usize;
-                    let row = (pos2.x * 2.0) as usize;
+                    let col = (pos2.y * ctx.pixels_per_point()) as usize;
+                    let row = (pos2.x * ctx.pixels_per_point()) as usize;
                     let pos =
                         image_size.transform_point(Point2::new(pos.x, pos.y));
                     if let Some(shape_image) = &self.shape_image {
-                        let col = shape_image.height() - col; // PROBLEM !!
-                                                              // let col = ((pos.y / 2.0 + 0.5)
-                                                              //     * shape_image.height() as f32)
-                                                              //     as usize;
-                                                              // let row = ((pos.x / 2.0 + 0.5)
-                                                              //     * shape_image.width() as f32)
-                                                              //     as usize;
-                        info!(
-                        "interact: {}|{}x{}|{} len:{} | clicked 2d at {} {} / {} {} => shape_nr: {:#?}",
-                        shape_image.width(),
-                        image_size.width(),
-                        shape_image.height(),
-                        image_size.height(),
-                        shape_image.len(),
-                        pos2.x,
-                        pos2.y,
-                        col, row,
-                        shape_image[(col, row)],
-                    );
+                        let col = shape_image.height() - col;
+                        info!("2d shape_nr: {:#?}", shape_image[(col, row)],);
+                        if let Some(shape_nr) = shape_image[(col, row)] {
+                            self.selected_shapes.insert(shape_nr, true);
+                        } else {
+                            // and no ctrl or cmd pressed
+                            self.selected_shapes.clear();
+                        }
                     }
                     if let Some(prev) = drag_start {
                         render_changed |= view.translate(prev, pos);
@@ -841,26 +805,7 @@ impl eframe::App for ViewerApp {
                     });
                     render_changed |=
                         view.zoom((scroll / 100.0).exp2(), mouse_pos);
-
-                    // TODO: do it here:
                 }
-
-                // DOES NOT WORK: mouse coordinates not transformed yet to render 2d space
-                // if r.clicked() {
-                //     if let Some(pos) = r.interact_pointer_pos() {
-                //         if let Some(shape_image) = &self.shape_image {
-                //             info!(
-                //                 "{}x{} len:{} | clicked 2d at {} {} => shape_nr: {:#?}",
-                //                 shape_image.width(),
-                //                 shape_image.height(),
-                //                 shape_image.len(),
-                //                 pos.x,
-                //                 pos.y,
-                //                 shape_image[(pos.x as usize * 2, pos.y as usize * 2)],
-                //             );
-                //         }
-                //     }
-                // }
             }
             RenderMode::ThreeD {
                 view, drag_start, ..
@@ -872,8 +817,21 @@ impl eframe::App for ViewerApp {
                 );
 
                 if let Some(pos) = r.interact_pointer_pos() {
+                    let pos2 = pos - rect.min;
+                    let col = (pos2.y * ctx.pixels_per_point()) as usize;
+                    let row = (pos2.x * ctx.pixels_per_point()) as usize;
                     let pos_world = image_size
                         .transform_point(Point3::new(pos.x, pos.y, 0.0));
+                    if let Some(shape_image) = &self.shape_image {
+                        let col = shape_image.height() - col;
+                        info!("3d shape_nr: {:#?}", shape_image[(col, row)],);
+                        if let Some(shape_nr) = shape_image[(col, row)] {
+                            self.selected_shapes.insert(shape_nr, true);
+                        } else {
+                            // and no ctrl or cmd pressed
+                            self.selected_shapes.clear();
+                        }
+                    }
                     match drag_start {
                         Some(Drag3D::Pan(prev)) => {
                             render_changed |= view.translate(prev, pos_world);
@@ -910,21 +868,6 @@ impl eframe::App for ViewerApp {
                     if scroll != 0.0 {
                         view.zoom((scroll / 100.0).exp2(), mouse_pos);
                         render_changed = true;
-                    }
-                }
-                if r.clicked() {
-                    if let Some(pos) = r.interact_pointer_pos() {
-                        if let Some(shape_image) = &self.shape_image {
-                            info!(
-                                "{}x{} len:{} | clicked 3d at {} {} => shape_nr: {:#?}",
-                                shape_image.width(),
-                                shape_image.height(),
-                                shape_image.len(),
-                                pos.x,
-                                pos.y,
-                                shape_image[(pos.x as usize, pos.y as usize)]
-                            );
-                        }
                     }
                 }
             }
