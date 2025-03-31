@@ -289,5 +289,8 @@ pub mod solver;
 #[cfg(feature = "rhai")]
 pub mod rhai;
 
+#[cfg(feature = "koto")]
+pub mod koto;
+
 #[cfg(all(feature = "jit", not(target_arch = "wasm32")))]
 pub mod jit;

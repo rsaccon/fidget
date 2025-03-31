@@ -5,6 +5,7 @@ members = [
     "demos/constraints",
     "demos/cli",
     "demos/viewer",
+    "demos/viewer-koto",
     "workspace-hack",
 ]
 exclude = ["demos/web-editor/crate"]
@@ -25,6 +26,7 @@ inherits = "test"
 opt-level = 0
 
 [workspace.dependencies]
+koto = { version = "0.15.2", default-features = false, features = ["arc"] }
 anyhow = "1"
 arrayvec = "0.7"
 bimap = "0.6"
@@ -52,4 +54,7 @@ strum = { version = "0.27", features = ["derive"] }
 thiserror = "2"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
-windows = { version = "0.60", features = ["Win32_Foundation", "Win32_System_Memory"] }
+windows = { version = "0.60", features = [
+    "Win32_Foundation",
+    "Win32_System_Memory",
+] }

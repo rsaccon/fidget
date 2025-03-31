@@ -1,0 +1,3 @@
+sphere = sqrt(square(x) + square(y) + square(z)) - 1
+export
+  sphere: sphere

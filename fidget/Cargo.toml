@@ -24,6 +24,8 @@ thiserror.workspace = true
 
 rhai = { workspace = true, optional = true }
 
+koto = { workspace = true, optional = true }
+
 workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 # JIT
@@ -35,12 +37,14 @@ windows.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # Feature unification hacks to get webassembly working
-getrandom-03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+getrandom-03 = { package = "getrandom", version = "0.3", features = [
+    "wasm_js",
+] }
 getrandom-02 = { package = "getrandom", version = "0.2", features = ["js"] }
 rhai = { workspace = true, optional = true, features = ["wasm-bindgen"] }
 
 [features]
-default = ["jit", "rhai"]
+default = ["jit", "rhai", "koto"]
 
 ## Enables fast evaluation via a JIT compiler.  This is exposed in the
 ## [`fidget::jit`](crate::jit) module, and is supported on macOS, Linux, and
@@ -53,6 +57,10 @@ jit = ["dep:dynasmrt", "dep:libc"]
 ## Enable [Rhai](https://rhai.rs/) bindings, in the
 ## [`fidget::rhai`](crate::rhai) module
 rhai = ["dep:rhai"]
+
+## Enable [Koto](https://koto.dev/) bindings, in the
+## [`fidget::koto`](crate::koto) module
+koto = ["dep:koto"]
 
 ## Enable `eval-tests` if you're writing your own evaluators and want to
 ## unit-test them.  When enabled, the crate exports a set of macros to test each

@@ -1,0 +1,28 @@
+[package]
+name = "fidget-viewer-koto"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+crossbeam-channel.workspace = true
+eframe.workspace = true
+env_logger.workspace = true
+log.workspace = true
+nalgebra.workspace = true
+notify.workspace = true
+koto.workspace = true
+
+fidget.path = "../../fidget"
+workspace-hack = { version = "0.1", path = "../../workspace-hack" }
+
+[features]
+default = ["jit"]
+jit = ["fidget/jit"]
+
+[[bin]]
+name = "fidget-viewer-koto"
+test = false
+doctest = false
