@@ -1,3 +1,4 @@
+shapes = []
 sphere = sqrt(square(x) + square(y) + square(z)) - 1
-export
-  sphere: sphere
+shapes.push sphere
+shapes
