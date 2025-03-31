@@ -1,5 +1,5 @@
 //! Koto bindings to Fidget
-use std::ops::{Add, Div, Mul, Sub};
+use std::ops::{Add, Div, Mul, Rem, Sub};
 use std::sync::{Arc, Mutex};
 
 use crate::{context::Tree, Error};
@@ -32,6 +32,24 @@ macro_rules! define_binary_op_fns {
     };
 }
 
+// macro_rules! register_fn {
+//     ($ctx:item, $name:ident) => {
+//         let args = $ctx.args();
+//         if args.len() != 1 {
+//             return unexpected_args("1 argument: tree or number", args);
+//         }
+//         match &args[0] {
+//             KValue::Object(obj) if obj.is_a::<KotoTree>() => {
+//                 let tree = obj.cast::<KotoTree>()?.to_owned().0;
+//                 let result = tree.$name();
+//                 Ok(KotoTree::make_koto_object(result).into())
+//             }
+//             // TODO: check and handle number
+//             unexpected => unexpected_type("invalid type", unexpected),
+//         }
+//     };
+// }
+
 #[derive(Clone, KotoCopy, KotoType)]
 #[koto(type_name = "Tree")]
 struct KotoTree(Tree);
@@ -41,6 +59,7 @@ impl KotoObject for KotoTree {
     define_binary_op_fns!(subtract, sub);
     define_binary_op_fns!(multiply, mul);
     define_binary_op_fns!(divide, div);
+    define_binary_op_fns!(remainder, modulo);
 }
 
 #[koto_impl]
@@ -129,24 +148,56 @@ impl Engine {
                 }
             });
 
-        engine.prelude().add_fn("sqrt", register_sqrt);
+        macro_rules! add_unary_fn {
+            ($text:literal, $name:ident) => {
+                // $engine.register_fn($op, $name::node);
+                engine.prelude().add_fn($text, move |ctx| {
+                    let args = ctx.args();
+                    if args.len() != 1 {
+                        return unexpected_args(
+                            "1 argument: tree or number",
+                            args,
+                        );
+                    }
+                    match &args[0] {
+                        KValue::Object(obj) if obj.is_a::<KotoTree>() => {
+                            let tree = obj.cast::<KotoTree>()?.to_owned().0;
+                            let result = tree.$name();
+                            Ok(KotoTree::make_koto_object(result).into())
+                        }
+                        // TODO: check and handle number
+                        unexpected => {
+                            unexpected_type("invalid type", unexpected)
+                        }
+                    }
+                });
+            };
+        }
 
-        engine.prelude().add_fn("square", move |ctx| {
-            //register_fn!(square);
-            let args = ctx.args();
-            if args.len() != 1 {
-                return unexpected_args("1 argument: tree or number", args);
-            }
-            match &args[0] {
-                KValue::Object(obj) if obj.is_a::<KotoTree>() => {
-                    let tree = obj.cast::<KotoTree>()?.to_owned().0;
-                    let result = tree.square();
-                    Ok(KotoTree::make_koto_object(result).into())
-                }
-                // TODO: check and handle number
-                unexpected => unexpected_type("invalid type", unexpected),
-            }
-        });
+        // register_binary_fns!("min", min, engine);
+        // register_binary_fns!("max", max, engine);
+        // register_binary_fns!("compare", compare, engine);
+        // register_binary_fns!("and", and, engine);
+        // register_binary_fns!("or", or, engine);
+        // register_binary_fns!("atan2", atan2, engine);
+
+        add_unary_fn!("abs", abs);
+        add_unary_fn!("sqrt", sqrt);
+        add_unary_fn!("square", square);
+        add_unary_fn!("sin", sin);
+        add_unary_fn!("cos", cos);
+        add_unary_fn!("tan", tan);
+        add_unary_fn!("asin", asin);
+        add_unary_fn!("acos", acos);
+        add_unary_fn!("atan", atan);
+        add_unary_fn!("exp", exp);
+        add_unary_fn!("ln", ln);
+        add_unary_fn!("not", not);
+        add_unary_fn!("ceil", ceil);
+        add_unary_fn!("floor", floor);
+        add_unary_fn!("round", round);
+
+        // register_unary_fns!("-", neg, engine);
 
         let context = Arc::new(Mutex::new(ScriptContext::new()));
 
@@ -235,21 +286,5 @@ impl ScriptContext {
     /// Resets the script context
     pub fn clear(&mut self) {
         self.shapes.clear();
-    }
-}
-
-fn register_sqrt(ctx: &mut CallContext) -> runtime::Result<KValue> {
-    let args = ctx.args();
-    if args.len() != 1 {
-        return unexpected_args("1 argument: Tree or Number", args);
-    }
-    match &args[0] {
-        KValue::Object(obj) if obj.is_a::<KotoTree>() => {
-            let tree = obj.cast::<KotoTree>()?.to_owned().0;
-            let result = tree.sqrt();
-            Ok(KotoTree::make_koto_object(result).into())
-        }
-        // TODO: check and handle number
-        unexpected => unexpected_type("invalid type", unexpected),
     }
 }
