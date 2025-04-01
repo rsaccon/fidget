@@ -1,0 +1,14 @@
+shapes = []
+scale = 30
+
+x = x * scale
+y = y * scale
+z = z * scale
+
+gyroid = sin(x)*cos(y) + sin(y)*cos(z) + sin(z)*cos(x)
+fill = abs(gyroid) - 0.2
+
+sphere = sqrt(square(x) + square(y) + square(z)) - 25
+
+shapes.push max(sphere, fill)
+shapes
