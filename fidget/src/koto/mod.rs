@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use crate::{context::Tree, Error};
 use koto::{derive::*, prelude::*, runtime};
 
-macro_rules! define_binary_op_fns {
+macro_rules! binary_operator {
     ($name_koto:ident, $name_tree:ident) => {
         fn $name_koto(&self, rhs: &KValue) -> runtime::Result<KValue> {
             let lhs = self.0.clone();
@@ -32,7 +32,7 @@ macro_rules! define_binary_op_fns {
     };
 }
 
-macro_rules! define_unary_op_fns {
+macro_rules! unary_operator_fns {
     ($koto_name:ident, $tree_name:ident) => {
         fn $koto_name(&self) -> runtime::Result<KValue> {
             let lhs = self.0.clone();
@@ -42,17 +42,35 @@ macro_rules! define_unary_op_fns {
     };
 }
 
+macro_rules! ban_comparison_operator {
+    ($koto_name:ident) => {
+        fn $koto_name(&self, rhs: &KValue) -> runtime::Result<bool> {
+            let err_msg = "cannot compare Tree types during function tracing";
+            unexpected_type(&err_msg, rhs)
+        }
+    };
+}
+
 #[derive(Clone, KotoCopy, KotoType)]
 #[koto(type_name = "Tree")]
 struct KotoTree(Tree);
 
 impl KotoObject for KotoTree {
-    define_binary_op_fns!(add, add);
-    define_binary_op_fns!(subtract, sub);
-    define_binary_op_fns!(multiply, mul);
-    define_binary_op_fns!(divide, div);
-    define_binary_op_fns!(remainder, modulo);
+    binary_operator!(add, add);
+    binary_operator!(subtract, sub);
+    binary_operator!(multiply, mul);
+    binary_operator!(divide, div);
+    binary_operator!(remainder, modulo);
     // define_unary_op_fns!(negate, neg);
+
+    // TODO: add assign-opertairs
+
+    ban_comparison_operator!(less);
+    ban_comparison_operator!(less_or_equal);
+    ban_comparison_operator!(greater);
+    ban_comparison_operator!(greater_or_equal);
+    ban_comparison_operator!(equal);
+    ban_comparison_operator!(not_equal);
 }
 
 #[koto_impl]
@@ -195,7 +213,7 @@ impl Engine {
 
         add_binary_fn!("min", min);
         add_binary_fn!("max", max);
-        // add_binary_fn!("equal", compare); // TODO ==> op ==
+        add_binary_fn!("compare", compare);
         // add_binary_fn!("and", and); // TODO ==> op and    ????
         // add_binary_fn!("or", or); // TODO ==> op or       ????
         add_binary_fn!("atan2", atan2);
