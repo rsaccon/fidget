@@ -1,23 +1,23 @@
 //! Koto bindings to Fidget
-use std::ops::{Add, Div, Mul, Rem, Sub};
+use std::ops::{Add, Div, Mul, /*Rem,*/ Sub};
 use std::sync::{Arc, Mutex};
 
 use crate::{context::Tree, Error};
 use koto::{derive::*, prelude::*, runtime};
 
 macro_rules! define_binary_op_fns {
-    ($koto_name:ident, $tree_name:ident) => {
-        fn $koto_name(&self, rhs: &KValue) -> runtime::Result<KValue> {
+    ($name_koto:ident, $name_tree:ident) => {
+        fn $name_koto(&self, rhs: &KValue) -> runtime::Result<KValue> {
             let lhs = self.0.clone();
             match rhs {
                 KValue::Number(num) => {
-                    let tree = lhs.$tree_name(Tree::constant(f64::from(num)));
+                    let tree = lhs.$name_tree(Tree::constant(f64::from(num)));
                     Ok(KValue::Object(Self(tree).into()))
                 }
                 KValue::Object(obj) if obj.is_a::<KotoTree>() => {
                     let koto_tree = obj.cast::<KotoTree>();
                     let tree = koto_tree.unwrap().to_owned().0;
-                    let result = lhs.$tree_name(tree);
+                    let result = lhs.$name_tree(tree);
                     Ok(KValue::Object(Self(result).into()))
                 }
                 unexpected => {
@@ -32,23 +32,15 @@ macro_rules! define_binary_op_fns {
     };
 }
 
-// macro_rules! register_fn {
-//     ($ctx:item, $name:ident) => {
-//         let args = $ctx.args();
-//         if args.len() != 1 {
-//             return unexpected_args("1 argument: tree or number", args);
-//         }
-//         match &args[0] {
-//             KValue::Object(obj) if obj.is_a::<KotoTree>() => {
-//                 let tree = obj.cast::<KotoTree>()?.to_owned().0;
-//                 let result = tree.$name();
-//                 Ok(KotoTree::make_koto_object(result).into())
-//             }
-//             // TODO: check and handle number
-//             unexpected => unexpected_type("invalid type", unexpected),
-//         }
-//     };
-// }
+macro_rules! define_unary_op_fns {
+    ($koto_name:ident, $tree_name:ident) => {
+        fn $koto_name(&self) -> runtime::Result<KValue> {
+            let lhs = self.0.clone();
+            let result = lhs.$tree_name();
+            Ok(KValue::Object(Self(result).into()))
+        }
+    };
+}
 
 #[derive(Clone, KotoCopy, KotoType)]
 #[koto(type_name = "Tree")]
@@ -60,6 +52,7 @@ impl KotoObject for KotoTree {
     define_binary_op_fns!(multiply, mul);
     define_binary_op_fns!(divide, div);
     define_binary_op_fns!(remainder, modulo);
+    // define_unary_op_fns!(negate, neg);
 }
 
 #[koto_impl]
@@ -149,13 +142,12 @@ impl Engine {
             });
 
         macro_rules! add_unary_fn {
-            ($text:literal, $name:ident) => {
-                // $engine.register_fn($op, $name::node);
-                engine.prelude().add_fn($text, move |ctx| {
+            ($name_string:literal, $name:ident) => {
+                engine.prelude().add_fn($name_string, move |ctx| {
                     let args = ctx.args();
                     if args.len() != 1 {
                         return unexpected_args(
-                            "1 argument: tree or number",
+                            "1 argument: Tree | Number",
                             args,
                         );
                     }
@@ -165,7 +157,7 @@ impl Engine {
                             let result = tree.$name();
                             Ok(KotoTree::make_koto_object(result).into())
                         }
-                        // TODO: check and handle number
+                        // TODO: check and handle KNumber
                         unexpected => {
                             unexpected_type("invalid type", unexpected)
                         }
@@ -174,12 +166,39 @@ impl Engine {
             };
         }
 
-        // register_binary_fns!("min", min, engine);
-        // register_binary_fns!("max", max, engine);
-        // register_binary_fns!("compare", compare, engine);
-        // register_binary_fns!("and", and, engine);
-        // register_binary_fns!("or", or, engine);
-        // register_binary_fns!("atan2", atan2, engine);
+        macro_rules! add_binary_fn {
+            ($name_string:literal, $name:ident) => {
+                engine.prelude().add_fn($name_string, move |ctx| {
+                    let args = ctx.args();
+                    if args.len() != 2 {
+                        return unexpected_args(
+                            "2 arguments: Tree | Number, Tree | Number",
+                            args,
+                        );
+                    }
+                    match (&args[0], &args[1]) {
+                        (KValue::Object(obj_a), KValue::Object(obj_b))
+                            if obj_a.is_a::<KotoTree>()
+                                && obj_a.is_a::<KotoTree>() =>
+                        {
+                            let tree_a = obj_a.cast::<KotoTree>()?.to_owned().0;
+                            let tree_b = obj_b.cast::<KotoTree>()?.to_owned().0;
+                            let result = tree_a.$name(tree_b);
+                            Ok(KotoTree::make_koto_object(result).into())
+                        }
+                        // TODO: check and handle KNumber and combinations
+                        _ => unexpected_args("invalid args", args),
+                    }
+                });
+            };
+        }
+
+        add_binary_fn!("min", min);
+        add_binary_fn!("max", max);
+        // add_binary_fn!("equal", compare); // TODO ==> op ==
+        // add_binary_fn!("and", and); // TODO ==> op and    ????
+        // add_binary_fn!("or", or); // TODO ==> op or       ????
+        add_binary_fn!("atan2", atan2);
 
         add_unary_fn!("abs", abs);
         add_unary_fn!("sqrt", sqrt);
@@ -196,8 +215,6 @@ impl Engine {
         add_unary_fn!("ceil", ceil);
         add_unary_fn!("floor", floor);
         add_unary_fn!("round", round);
-
-        // register_unary_fns!("-", neg, engine);
 
         let context = Arc::new(Mutex::new(ScriptContext::new()));
 
