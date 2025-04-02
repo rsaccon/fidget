@@ -1,0 +1,7 @@
+union = |a, b| min a, b
+
+intersection = |a, b| max a, b
+
+inverse = |a| -a
+
+difference = |a, b| intersection(a, inverse(b))

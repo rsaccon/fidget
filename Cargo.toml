@@ -26,7 +26,7 @@ inherits = "test"
 opt-level = 0
 
 [workspace.dependencies]
-koto = { version = "0.15.2", default-features = false, features = ["arc"] }
+koto = { version = "0.16.0", default-features = false, features = ["arc"] }
 anyhow = "1"
 arrayvec = "0.7"
 bimap = "0.6"
@@ -58,3 +58,6 @@ windows = { version = "0.60", features = [
     "Win32_Foundation",
     "Win32_System_Memory",
 ] }
+
+[patch.crates-io]
+koto = { git = "https://github.com/koto-lang/koto" }
