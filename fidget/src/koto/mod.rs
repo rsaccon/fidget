@@ -1,5 +1,5 @@
 //! Koto bindings to Fidget
-use std::ops::{Add, Div, Mul, /*Rem,*/ Sub};
+use std::ops::{Add, Div, Mul, Sub};
 use std::sync::{Arc, Mutex};
 
 use crate::{context::Tree, Error};
@@ -8,17 +8,41 @@ use koto::{derive::*, prelude::*, runtime};
 macro_rules! binary_operator {
     ($name_koto:ident, $name_tree:ident) => {
         fn $name_koto(&self, rhs: &KValue) -> runtime::Result<KValue> {
-            let lhs = self.0.clone();
-            match rhs {
-                KValue::Number(num) => {
-                    let tree = lhs.$name_tree(Tree::constant(f64::from(num)));
+            let lhs_tree = self.0.clone();
+            // match self {}
+            match (self, rhs) {
+                (KValue::Object(_), KValue::Object(obj)) => {
+                    if obj.is_a::<KotoTree>() {
+                        let koto_tree = obj.cast::<KotoTree>();
+                        let tree = koto_tree.unwrap().to_owned().0;
+                        let result = lhs_tree.$name_tree(tree);
+                        Ok(KValue::Object(Self(result).into()))
+                    } else {
+                        let err_msg = format!(
+                            "invalid type for {}(Tree, rhs)",
+                            stringify!($tree_name)
+                        );
+                        unexpected_type(&err_msg, obj)
+                    }
+                }
+                (KValue::Object(_), KValue::Number(num)) => {
+                    let tree =
+                        lhs_tree.$name_tree(Tree::constant(f64::from(num)));
                     Ok(KValue::Object(Self(tree).into()))
                 }
-                KValue::Object(obj) if obj.is_a::<KotoTree>() => {
-                    let koto_tree = obj.cast::<KotoTree>();
-                    let tree = koto_tree.unwrap().to_owned().0;
-                    let result = lhs.$name_tree(tree);
-                    Ok(KValue::Object(Self(result).into()))
+                (KValue::Number(_), KValue::Object(obj)) => {
+                    if obj.is_a::<KotoTree>() {
+                        let koto_tree = obj.cast::<KotoTree>();
+                        let tree = koto_tree.unwrap().to_owned().0;
+                        let result = tree.$name_tree(lhs_tree);
+                        Ok(KValue::Object(Self(tree).into()))
+                    } else {
+                        let err_msg = format!(
+                            "invalid type for {}(Tree, rhs)",
+                            stringify!($tree_name)
+                        );
+                        unexpected_type(&err_msg, obj)
+                    }
                 }
                 unexpected => {
                     let err_msg = format!(
@@ -63,7 +87,8 @@ impl KotoObject for KotoTree {
     binary_operator!(remainder, modulo);
     unary_operator!(negate, neg);
 
-    // TODO: add assign-opertairs
+    // TODO: add assign-operators
+    // TODO: Add all the in-built fns here as well
 
     ban_comparison_operator!(less);
     ban_comparison_operator!(less_or_equal);
@@ -161,33 +186,6 @@ impl Engine {
             ])))
         });
 
-        // CAN BE REMOVED, we use remap in KotoTree
-        // engine.prelude()
-        //     .add_fn("remap_xyz", move |ctx| {
-        //         let args = ctx.args();
-        //         if args.len() != 4 {
-        //             return unexpected_args("4 arguments: shape, x, y, z", args);
-        //         }
-        //         match args {
-        //             [KValue::Object(obj),
-        //                 KValue::Object(obj_x),
-        //                 KValue::Object(obj_y),
-        //                 KValue::Object(obj_z)] => {
-        //                 if obj.is_a::<KotoTree>() && obj_x.is_a::<KotoTree>() && obj_y.is_a::<KotoTree>() && obj_z.is_a::<KotoTree>() {
-        //                     let tree = obj.cast::<KotoTree>()?.to_owned().0;
-        //                     let x = obj_x.cast::<KotoTree>()?.to_owned().0;
-        //                     let y = obj_y.cast::<KotoTree>()?.to_owned().0;
-        //                     let z = obj_z.cast::<KotoTree>()?.to_owned().0;
-        //                     let result = tree.remap_xyz(x, y, z);
-        //                     Ok(KotoTree::make_koto_object(result).into())
-        //                 } else {
-        //                     unexpected_args("invalid type", args)
-        //                 }
-        //             }
-        //             _ => unexpected_args("invalid type", args)
-        //         }
-        //     });
-
         macro_rules! add_unary_fn {
             ($name_string:literal, $name:ident) => {
                 engine.prelude().add_fn($name_string, move |ctx| {
@@ -240,6 +238,8 @@ impl Engine {
             };
         }
 
+        // TODO: put the in-builts below in a module, so we are not polluting the global namespace
+
         add_binary_fn!("min", min);
         add_binary_fn!("max", max);
         add_binary_fn!("compare", compare);
@@ -274,10 +274,22 @@ impl Engine {
 
         let core_script = include_str!("core.koto");
         if let Err(_) = self.engine.compile_and_run(core_script) {
-            return Err(Error::EmptyFile); // TODO: better Error Message
+            return Err(Error::EmptyFile); // TODO: better Error Message, koto specific
         }
 
         match self.engine.compile_and_run(script) {
+            Ok(KValue::Object(obj)) => {
+                if obj.is_a::<KotoTree>() {
+                    let koto_tree = obj.cast::<KotoTree>();
+                    let tree = koto_tree.unwrap().to_owned().0;
+                    self.context.lock().unwrap().shapes.push(DrawShape {
+                        tree,
+                        color_rgb: [u8::MAX; 3],
+                    })
+                } else {
+                    println!("No shapes returned")
+                }
+            }
             Ok(KValue::List(list)) => {
                 for el in list.data().iter() {
                     match el {

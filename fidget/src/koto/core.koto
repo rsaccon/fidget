@@ -1,7 +1,7 @@
-union = |a, b| min a, b
+export union = |a, b| min a, b
 
-intersection = |a, b| max a, b
+export intersection = |a, b| max a, b
 
-inverse = |a| -a
+export inverse = |a| -a
 
-difference = |a, b| intersection(a, inverse(b))
+export difference = |a, b| intersection(a, inverse(b))
