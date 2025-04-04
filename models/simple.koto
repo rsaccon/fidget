@@ -1,4 +1,5 @@
 shapes = []
 sphere = sqrt(square(x) + square(y) + square(z)) - 1
+# phere = (x.square() + y.square() + z.square()).sqrt() - 1
 shapes.push sphere
 shapes

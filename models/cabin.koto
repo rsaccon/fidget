@@ -1,6 +1,12 @@
 # Isometric render:   --scale 0.05 --pitch 80 --roll 130 --center=0,0,-14 --isometric
 # Perspective render: --scale 0.05 --pitch 80 --roll 130 --center=0,0,-14 --perspective=0.2 --zflatten 2
-logs = abs(x) -sqrt(max(0.05, -square(y % 2 - 1) + 1)) - 10
+
+foo1 = square(y % 2 - 1) + 1
+foo2 = max(foo1, 0.05)
+foo3 = -sqrt(foo2)
+foo4 = abs(x) - foo3 - 10
+logs = foo4
+#logs = abs(x) - sqrt(max(-square(y % 2 - 1) + 1, 0.05)) - 10
 cabin = max(logs.remap_xyz(x, z, y), logs.remap_xyz(y, z, x))
 
 let roof = z/2 + abs(y)/2 - 15;

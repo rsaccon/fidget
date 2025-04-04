@@ -9,47 +9,25 @@ macro_rules! binary_operator {
     ($name_koto:ident, $name_tree:ident) => {
         fn $name_koto(&self, rhs: &KValue) -> runtime::Result<KValue> {
             let lhs_tree = self.0.clone();
-            // match self {}
-            match (self, rhs) {
-                (KValue::Object(_), KValue::Object(obj)) => {
-                    if obj.is_a::<KotoTree>() {
-                        let koto_tree = obj.cast::<KotoTree>();
-                        let tree = koto_tree.unwrap().to_owned().0;
-                        let result = lhs_tree.$name_tree(tree);
-                        Ok(KValue::Object(Self(result).into()))
-                    } else {
-                        let err_msg = format!(
-                            "invalid type for {}(Tree, rhs)",
-                            stringify!($tree_name)
-                        );
-                        unexpected_type(&err_msg, obj)
-                    }
+
+            match rhs {
+                KValue::Object(obj) if obj.is_a::<KotoTree>() => {
+                    let koto_tree = obj.cast::<KotoTree>();
+                    let tree = koto_tree.unwrap().to_owned().0;
+                    let result = lhs_tree.$name_tree(tree);
+                    Ok(KValue::Object(Self(result).into()))
                 }
-                (KValue::Object(_), KValue::Number(num)) => {
+                KValue::Number(num) => {
                     let tree =
                         lhs_tree.$name_tree(Tree::constant(f64::from(num)));
                     Ok(KValue::Object(Self(tree).into()))
                 }
-                (KValue::Number(_), KValue::Object(obj)) => {
-                    if obj.is_a::<KotoTree>() {
-                        let koto_tree = obj.cast::<KotoTree>();
-                        let tree = koto_tree.unwrap().to_owned().0;
-                        let result = tree.$name_tree(lhs_tree);
-                        Ok(KValue::Object(Self(tree).into()))
-                    } else {
-                        let err_msg = format!(
-                            "invalid type for {}(Tree, rhs)",
-                            stringify!($tree_name)
-                        );
-                        unexpected_type(&err_msg, obj)
-                    }
-                }
-                unexpected => {
+                _unexpected => {
                     let err_msg = format!(
                         "invalid type for {}(Tree, rhs)",
                         stringify!($tree_name)
                     );
-                    unexpected_type(&err_msg, unexpected)
+                    unexpected_type(&err_msg, rhs)
                 }
             }
         }
@@ -81,10 +59,15 @@ struct KotoTree(Tree);
 
 impl KotoObject for KotoTree {
     binary_operator!(add, add);
+    binary_operator!(add_rhs, add);
     binary_operator!(subtract, sub);
+    binary_operator!(subtract_rhs, add);
     binary_operator!(multiply, mul);
+    binary_operator!(multiply_rhs, add);
     binary_operator!(divide, div);
+    binary_operator!(divide_rhs, add);
     binary_operator!(remainder, modulo);
+    binary_operator!(remainder_rhs, add);
     unary_operator!(negate, neg);
 
     // TODO: add assign-operators
@@ -100,6 +83,22 @@ impl KotoObject for KotoTree {
 
 #[koto_impl]
 impl KotoTree {
+    // add_unary_fn!("abs", abs);
+    unary_operator!(sqrt, sqrt);
+    unary_operator!(square, square);
+    // add_unary_fn!("sin", sin);
+    // add_unary_fn!("cos", cos);
+    // add_unary_fn!("tan", tan);
+    // add_unary_fn!("asin", asin);
+    // add_unary_fn!("acos", acos);
+    // add_unary_fn!("atan", atan);
+    // add_unary_fn!("exp", exp);
+    // add_unary_fn!("ln", ln);
+    // add_unary_fn!("not", not);
+    // add_unary_fn!("ceil", ceil);
+    // add_unary_fn!("floor", floor);
+    // add_unary_fn!("round", round);
+
     fn make_koto_object(tree: Tree) -> KObject {
         let koto_tree = Self(tree.into());
         KObject::from(koto_tree)
